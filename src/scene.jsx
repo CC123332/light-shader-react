@@ -149,97 +149,97 @@ export function setupSceneContent({ scene, camera, renderer, lights }) {
       metalness: 0.0
     });
 
-    mat.onBeforeCompile = (shader) => {
-      const usesPCFragColor = shader.fragmentShader.includes('pc_fragColor');
-      const outVar = usesPCFragColor ? 'pc_fragColor' : 'gl_FragColor';
+    // mat.onBeforeCompile = (shader) => {
+    //   const usesPCFragColor = shader.fragmentShader.includes('pc_fragColor');
+    //   const outVar = usesPCFragColor ? 'pc_fragColor' : 'gl_FragColor';
 
-      /* ============================
-        Fragment shader modifications
-        ============================ */
+    //   /* ============================
+    //     Fragment shader modifications
+    //     ============================ */
 
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <common>',
-        `
-          #include <common>
+    //   shader.fragmentShader = shader.fragmentShader.replace(
+    //     '#include <common>',
+    //     `
+    //       #include <common>
 
-          // Screen-space dot mask in *pixel* units using gl_FragCoord.xy.
-          // fragPx: pixel coords (gl_FragCoord.xy)
-          // periodPx: spacing between dot centers (pixels)
-          // radiusPx: dot radius (pixels)
-          // angle: rotation (radians)
-          float dotMaskPx(vec2 fragPx, float periodPx, float radiusPx, float angle)
-          {
-            float c = cos(angle);
-            float s = sin(angle);
+    //       // Screen-space dot mask in *pixel* units using gl_FragCoord.xy.
+    //       // fragPx: pixel coords (gl_FragCoord.xy)
+    //       // periodPx: spacing between dot centers (pixels)
+    //       // radiusPx: dot radius (pixels)
+    //       // angle: rotation (radians)
+    //       float dotMaskPx(vec2 fragPx, float periodPx, float radiusPx, float angle)
+    //       {
+    //         float c = cos(angle);
+    //         float s = sin(angle);
 
-            // Rotate around origin in screen space
-            vec2 r = vec2(
-              c * fragPx.x - s * fragPx.y,
-              s * fragPx.x + c * fragPx.y
-            );
+    //         // Rotate around origin in screen space
+    //         vec2 r = vec2(
+    //           c * fragPx.x - s * fragPx.y,
+    //           s * fragPx.x + c * fragPx.y
+    //         );
 
-            // Repeating cell centered at 0 in pixel units
-            vec2 cell = fract(r / periodPx + 0.5) - 0.5;
+    //         // Repeating cell centered at 0 in pixel units
+    //         vec2 cell = fract(r / periodPx + 0.5) - 0.5;
 
-            // Pixel distance to dot center
-            float d = length(cell * periodPx);
+    //         // Pixel distance to dot center
+    //         float d = length(cell * periodPx);
 
-            // Anti-alias in pixel space
-            float aa = fwidth(d);
+    //         // Anti-alias in pixel space
+    //         float aa = fwidth(d);
 
-            return smoothstep(radiusPx - aa, radiusPx + aa, d);
-          }
-        `
-      );
+    //         return smoothstep(radiusPx - aa, radiusPx + aa, d);
+    //       }
+    //     `
+    //   );
 
-      /* ============================
-        Final color override
-        ============================ */
+    //   /* ============================
+    //     Final color override
+    //     ============================ */
 
-      shader.fragmentShader = shader.fragmentShader.replace(
-        /}\s*$/,
-        `
-          vec3 currentRGB = ${outVar}.rgb;
+    //   shader.fragmentShader = shader.fragmentShader.replace(
+    //     /}\s*$/,
+    //     `
+    //       vec3 currentRGB = ${outVar}.rgb;
 
-          // Luminance of the shaded surface
-          float val = dot(currentRGB, vec3(0.2126, 0.7152, 0.0722));
+    //       // Luminance of the shaded surface
+    //       float val = dot(currentRGB, vec3(0.2126, 0.7152, 0.0722));
 
-          // Smooth black/white classification
-          float threshold = 0.5;
-          float edge = fwidth(val);
-          float bw = smoothstep(threshold - edge, threshold + edge, val);
-          // bw = 0 -> "black region", bw = 1 -> "white region"
+    //       // Smooth black/white classification
+    //       float threshold = 0.5;
+    //       float edge = fwidth(val);
+    //       float bw = smoothstep(threshold - edge, threshold + edge, val);
+    //       // bw = 0 -> "black region", bw = 1 -> "white region"
 
-          // Pixel coords (no stretching)
-          vec2 fragPx = gl_FragCoord.xy;
+    //       // Pixel coords (no stretching)
+    //       vec2 fragPx = gl_FragCoord.xy;
 
-          // Dot parameters in pixels
-          float periodPx = 8.0; // spacing in pixels
-          float angle    = 0.0; // rotate dot grid if desired
+    //       // Dot parameters in pixels
+    //       float periodPx = 8.0; // spacing in pixels
+    //       float angle    = 0.0; // rotate dot grid if desired
 
-          // Radius selection based on luminance
-          float radiusPx;
-          if (val < 0.1) {
-            radiusPx = 3.0;
-          } else if (val < 0.3) {
-            radiusPx = 2.0;
-          } else {
-            radiusPx = 1.0;
-          }
+    //       // Radius selection based on luminance
+    //       float radiusPx;
+    //       if (val < 0.1) {
+    //         radiusPx = 3.0;
+    //       } else if (val < 0.3) {
+    //         radiusPx = 2.0;
+    //       } else {
+    //         radiusPx = 1.0;
+    //       }
 
-          float dots = dotMaskPx(fragPx, periodPx, radiusPx, angle);
+    //       float dots = dotMaskPx(fragPx, periodPx, radiusPx, angle);
 
-          // Dots in the black region, solid white elsewhere
-          float colorBW = mix(dots, 1.0, bw);
+    //       // Dots in the black region, solid white elsewhere
+    //       float colorBW = mix(dots, 1.0, bw);
 
-          ${outVar} = vec4(vec3(colorBW), ${outVar}.a);
+    //       ${outVar} = vec4(vec3(colorBW), ${outVar}.a);
 
-        }
-        `
-      );
+    //     }
+    //     `
+    //   );
 
-      mat.userData.shader = shader;
-    };
+    //   mat.userData.shader = shader;
+    // };
 
     mat.needsUpdate = true;
     return mat;
@@ -352,10 +352,10 @@ function makeNoiseShadowMaterial(noiseTexture) {
     });
 
 
-    if (fbx.animations?.length) {
-      mixer = new THREE.AnimationMixer(fbxRoot);
-      mixer.clipAction(fbx.animations[0]).play();
-    }
+    // if (fbx.animations?.length) {
+    //   mixer = new THREE.AnimationMixer(fbxRoot);
+    //   mixer.clipAction(fbx.animations[0]).play();
+    // }
   });
 
 
