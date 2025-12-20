@@ -1,237 +1,12 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { EffectComposer, RenderPass, EffectPass, Effect } from "postprocessing";
+import { EffectComposer, RenderPass, EffectPass } from "postprocessing";
 import GUI from "lil-gui";
 import { setupSceneContent } from "./scene";
-import { extend } from "@react-three/fiber";
-import { Pass } from "postprocessing";
+import { KuwaharaEffect } from "./shaders/KuwaharaEffect";
+
 
 export default function ThreeApp() {
-
-class KuwaharaEffect extends Effect {
-  constructor({ radius = 10 } = {}) {
-    super("KuwaharaEffect", /* fragment */ `
-      #define SECTOR_COUNT 8
-
-      uniform float radius;
-      uniform vec4 resolution;
-
-      vec3 sampleColor(vec2 fragCoord, vec2 offset) {
-        vec2 coord = (fragCoord + offset) / resolution.xy;
-        return texture2D(inputBuffer, coord).rgb;
-      }
-
-      void getSectorVarianceAndAverageColor(vec2 fragCoord, float angle, float rad, out vec3 avgColor, out float variance) {
-        vec3 colorSum = vec3(0.0);
-        vec3 squaredColorSum = vec3(0.0);
-        float sampleCount = 0.0;
-
-        for (float r = 1.0; r <= rad; r += 1.0) {
-          for (float a = -0.392699; a <= 0.392699; a += 0.196349) {
-            vec2 sampleOffset = r * vec2(cos(angle + a), sin(angle + a));
-            vec3 c = sampleColor(fragCoord, sampleOffset);
-            colorSum += c;
-            squaredColorSum += c * c;
-            sampleCount += 1.0;
-          }
-        }
-
-        avgColor = colorSum / sampleCount;
-        vec3 varVec = (squaredColorSum / sampleCount) - (avgColor * avgColor);
-        variance = dot(varVec, vec3(0.299, 0.587, 0.114));
-      }
-
-      void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
-        // pixel coords
-        vec2 fragCoord = uv * resolution.xy;
-
-        vec3 sectorAvg[SECTOR_COUNT];
-        float sectorVar[SECTOR_COUNT];
-
-        for (int i = 0; i < SECTOR_COUNT; i++) {
-          float angle = float(i) * 6.28318 / float(SECTOR_COUNT);
-          getSectorVarianceAndAverageColor(fragCoord, angle, radius, sectorAvg[i], sectorVar[i]);
-        }
-
-        float minV = sectorVar[0];
-        vec3 finalC = sectorAvg[0];
-
-        for (int i = 1; i < SECTOR_COUNT; i++) {
-          if (sectorVar[i] < minV) {
-            minV = sectorVar[i];
-            finalC = sectorAvg[i];
-          }
-        }
-
-        outputColor = vec4(finalC, 1.0);
-      }
-    `, {
-      uniforms: new Map([
-        ["radius", new THREE.Uniform(radius)],
-        ["resolution", new THREE.Uniform(new THREE.Vector4(1, 1, 1, 1))],
-      ]),
-    });
-
-    this._size = new THREE.Vector2();
-    this._resolution = new THREE.Vector4();
-  }
-
-  setRadius(v) {
-    this.uniforms.get("radius").value = v;
-  }
-
-  update(renderer) {
-    // Keep resolution current (pixel size, incl DPR)
-    renderer.getDrawingBufferSize(this._size);
-    const w = Math.max(1, this._size.x);
-    const h = Math.max(1, this._size.y);
-    this._resolution.set(w, h, 1 / w, 1 / h);
-    this.uniforms.get("resolution").value.copy(this._resolution);
-  }
-}
-
-
-  const kuwaharaShader = {
-    uniforms: {
-      inputBuffer: { value: null },
-      resolution: {
-        value: new THREE.Vector4(),
-      },
-      radius: { value: 100.0 },
-    },
-    vertexShader: `
-    varying vec2 vUv;
-
-    void main() {
-      vUv = uv;
-      vec4 modelViewPosition = modelViewMatrix * vec4(position, 1.0);
-    
-
-      // Set the final position of the vertex
-      gl_Position = projectionMatrix * modelViewPosition;
-    }
-    `,
-    fragmentShader: `
-      #define SECTOR_COUNT 8
-
-      uniform float radius;
-      uniform sampler2D inputBuffer;
-      uniform vec4 resolution;
-      uniform sampler2D originalTexture;
-
-      varying vec2 vUv;
-
-      vec3 sampleColor(vec2 offset) {
-          vec2 coord = (gl_FragCoord.xy + offset) / resolution.xy;
-          return texture2D(inputBuffer, coord).rgb;
-      }
-
-      void getSectorVarianceAndAverageColor(float angle, float radius, out vec3 avgColor, out float variance) {
-          vec3 colorSum = vec3(0.0);
-          vec3 squaredColorSum = vec3(0.0);
-          float sampleCount = 0.0;
-
-          for (float r = 1.0; r <= radius; r += 1.0) {
-              for (float a = -0.392699; a <= 0.392699; a += 0.196349) {
-                  vec2 sampleOffset = r * vec2(cos(angle + a), sin(angle + a));
-                  vec3 color = sampleColor(sampleOffset);
-                  colorSum += color;
-                  squaredColorSum += color * color;
-                  sampleCount += 1.0;
-              }
-          }
-
-          // Calculate average color and variance
-          avgColor = colorSum / sampleCount;
-          vec3 varianceRes = (squaredColorSum / sampleCount) - (avgColor * avgColor);
-          variance = dot(varianceRes, vec3(0.299, 0.587, 0.114)); // Convert to luminance
-      }
-
-      void main() {
-          vec3 sectorAvgColors[SECTOR_COUNT];
-          float sectorVariances[SECTOR_COUNT];
-
-          for (int i = 0; i < SECTOR_COUNT; i++) {
-            float angle = float(i) * 6.28318 / float(SECTOR_COUNT); // 2π / SECTOR_COUNT
-            getSectorVarianceAndAverageColor(angle, float(radius), sectorAvgColors[i], sectorVariances[i]);
-          }
-
-          float minVariance = sectorVariances[0];
-          vec3 finalColor = sectorAvgColors[0];
-
-          for (int i = 1; i < SECTOR_COUNT; i++) {
-              if (sectorVariances[i] < minVariance) {
-                  minVariance = sectorVariances[i];
-                  finalColor = sectorAvgColors[i];
-              }
-          }
-
-          gl_FragColor = vec4(finalColor, 1.0);
-      }`,
-  };
-
-  class KuwaharaPass extends Pass {
-    constructor({ radius = 10 } = {}) {
-      super();
-
-      this.name = "KuwaharaPass";
-      this.enabled = true;
-
-      this.material = new THREE.ShaderMaterial({
-        uniforms: {
-          inputBuffer: { value: null },
-          resolution: { value: new THREE.Vector4(1, 1, 1, 1) },
-          radius: { value: radius },
-        },
-        vertexShader: `
-          varying vec2 vUv;
-          void main() {
-            vUv = uv;
-            gl_Position = vec4(position.xy, 0.0, 1.0);
-          }
-        `,
-        fragmentShader: kuwaharaShader.fragmentShader, // reuse yours
-        depthTest: false,
-        depthWrite: false,
-      });
-
-      // IMPORTANT: Pass provides a full-screen quad helper
-      this._fsQuad = new Pass.FullScreenQuad(this.material);
-
-      this.radius = radius;
-
-      this._size = new THREE.Vector2();
-      this._resolution = new THREE.Vector4();
-    }
-
-    dispose() {
-      this.material.dispose();
-      this._fsQuad.dispose();
-    }
-
-    render(renderer, writeBuffer, readBuffer /*, deltaTime */) {
-      if (!this.enabled) return;
-
-      renderer.getDrawingBufferSize(this._size);
-
-      // Guard against 0 size (first layout frame can be 0)
-      const w = Math.max(1, this._size.x);
-      const h = Math.max(1, this._size.y);
-
-      this._resolution.set(w, h, 1 / w, 1 / h);
-
-      this.material.uniforms.inputBuffer.value = readBuffer.texture;
-      this.material.uniforms.resolution.value.copy(this._resolution);
-      this.material.uniforms.radius.value = this.radius;
-
-      // Draw full-screen
-      const target = this.renderToScreen ? null : writeBuffer;
-      renderer.setRenderTarget(target);
-      this._fsQuad.render(renderer);
-    }
-  }
-
-  extend({ KuwaharaPass });
 
   const mountRef = useRef(null);
 
@@ -265,12 +40,25 @@ class KuwaharaEffect extends Effect {
     scene.add(camera);
 
     const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
 
-    const kuwaharaEffect = new KuwaharaEffect({ radius: 40 });
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    const kuwaharaEffect = new KuwaharaEffect({ radius: 10 });
     const kuwaharaPass = new EffectPass(camera, kuwaharaEffect);
     composer.addPass(kuwaharaPass);
-    kuwaharaPass.renderToScreen = true;
+
+    // Ensure *some* pass always renders to screen
+    function setKuwaharaEnabled(enabled) {
+      kuwaharaPass.enabled = enabled;
+
+      // The *last enabled* pass must render to screen
+      kuwaharaPass.renderToScreen = enabled;
+      renderPass.renderToScreen = !enabled;
+    }
+
+    // initial state
+    setKuwaharaEnabled(true);
 
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x202030, 0.5);
     scene.add(hemiLight);
@@ -308,6 +96,32 @@ class KuwaharaEffect extends Effect {
 
     // GUI
     const gui = new GUI({ title: "Lighting" });
+
+    // --- Post FX GUI params ---
+    const postParams = {
+      kuwaharaEnabled: true,
+      kuwaharaRadius: 10,
+    };
+    // --------------------------
+
+    const postFolder = gui.addFolder("Post FX");
+    postFolder
+      .add(postParams, "kuwaharaEnabled")
+      .name("Kuwahara")
+      .onChange((v) => setKuwaharaEnabled(v));
+
+    postFolder
+      .add(postParams, "kuwaharaRadius", 0, 30, 1)
+      .name("Radius")
+      .onChange((v) => {
+        // keep GUI state and effect state consistent
+        // depending on your KuwaharaEffect implementation, one of these will apply:
+        if (kuwaharaEffect.uniforms?.get?.("radius")) {
+          kuwaharaEffect.uniforms.get("radius").value = v;
+        } else if ("radius" in kuwaharaEffect) {
+          kuwaharaEffect.radius = v;
+        }
+      });
 
     const dirParams = {
       color: `#${dirLight.color.getHexString()}`,

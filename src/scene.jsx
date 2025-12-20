@@ -149,181 +149,226 @@ export function setupSceneContent({ scene, camera, renderer, lights }) {
       metalness: 0.0
     });
 
-    // mat.onBeforeCompile = (shader) => {
-    //   const usesPCFragColor = shader.fragmentShader.includes('pc_fragColor');
-    //   const outVar = usesPCFragColor ? 'pc_fragColor' : 'gl_FragColor';
+    mat.onBeforeCompile = (shader) => {
+      const usesPCFragColor = shader.fragmentShader.includes('pc_fragColor');
+      const outVar = usesPCFragColor ? 'pc_fragColor' : 'gl_FragColor';
 
-    //   /* ============================
-    //     Fragment shader modifications
-    //     ============================ */
+      /* ============================
+        Fragment shader modifications
+        ============================ */
 
-    //   shader.fragmentShader = shader.fragmentShader.replace(
-    //     '#include <common>',
-    //     `
-    //       #include <common>
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `
+          #include <common>
 
-    //       // Screen-space dot mask in *pixel* units using gl_FragCoord.xy.
-    //       // fragPx: pixel coords (gl_FragCoord.xy)
-    //       // periodPx: spacing between dot centers (pixels)
-    //       // radiusPx: dot radius (pixels)
-    //       // angle: rotation (radians)
-    //       float dotMaskPx(vec2 fragPx, float periodPx, float radiusPx, float angle)
-    //       {
-    //         float c = cos(angle);
-    //         float s = sin(angle);
+          // Screen-space dot mask in *pixel* units using gl_FragCoord.xy.
+          // fragPx: pixel coords (gl_FragCoord.xy)
+          // periodPx: spacing between dot centers (pixels)
+          // radiusPx: dot radius (pixels)
+          // angle: rotation (radians)
+          float dotMaskPx(vec2 fragPx, float periodPx, float radiusPx, float angle)
+          {
+            float c = cos(angle);
+            float s = sin(angle);
 
-    //         // Rotate around origin in screen space
-    //         vec2 r = vec2(
-    //           c * fragPx.x - s * fragPx.y,
-    //           s * fragPx.x + c * fragPx.y
-    //         );
+            // Rotate around origin in screen space
+            vec2 r = vec2(
+              c * fragPx.x - s * fragPx.y,
+              s * fragPx.x + c * fragPx.y
+            );
 
-    //         // Repeating cell centered at 0 in pixel units
-    //         vec2 cell = fract(r / periodPx + 0.5) - 0.5;
+            // Repeating cell centered at 0 in pixel units
+            vec2 cell = fract(r / periodPx + 0.5) - 0.5;
 
-    //         // Pixel distance to dot center
-    //         float d = length(cell * periodPx);
+            // Pixel distance to dot center
+            float d = length(cell * periodPx);
 
-    //         // Anti-alias in pixel space
-    //         float aa = fwidth(d);
+            // Anti-alias in pixel space
+            float aa = fwidth(d);
 
-    //         return smoothstep(radiusPx - aa, radiusPx + aa, d);
-    //       }
-    //     `
-    //   );
+            return smoothstep(radiusPx - aa, radiusPx + aa, d);
+          }
+        `
+      );
 
-    //   /* ============================
-    //     Final color override
-    //     ============================ */
+      /* ============================
+        Final color override
+        ============================ */
 
-    //   shader.fragmentShader = shader.fragmentShader.replace(
-    //     /}\s*$/,
-    //     `
-    //       vec3 currentRGB = ${outVar}.rgb;
+      shader.fragmentShader = shader.fragmentShader.replace(
+        /}\s*$/,
+        `
+          vec3 currentRGB = ${outVar}.rgb;
 
-    //       // Luminance of the shaded surface
-    //       float val = dot(currentRGB, vec3(0.2126, 0.7152, 0.0722));
+          // Luminance of the shaded surface
+          float val = dot(currentRGB, vec3(0.2126, 0.7152, 0.0722));
 
-    //       // Smooth black/white classification
-    //       float threshold = 0.5;
-    //       float edge = fwidth(val);
-    //       float bw = smoothstep(threshold - edge, threshold + edge, val);
-    //       // bw = 0 -> "black region", bw = 1 -> "white region"
+          // Smooth black/white classification
+          float threshold = 0.5;
+          float edge = fwidth(val);
+          float bw = smoothstep(threshold - edge, threshold + edge, val);
+          // bw = 0 -> "black region", bw = 1 -> "white region"
 
-    //       // Pixel coords (no stretching)
-    //       vec2 fragPx = gl_FragCoord.xy;
+          // Pixel coords (no stretching)
+          vec2 fragPx = gl_FragCoord.xy;
 
-    //       // Dot parameters in pixels
-    //       float periodPx = 8.0; // spacing in pixels
-    //       float angle    = 0.0; // rotate dot grid if desired
+          // Dot parameters in pixels
+          float periodPx = 8.0; // spacing in pixels
+          float angle    = 0.0; // rotate dot grid if desired
 
-    //       // Radius selection based on luminance
-    //       float radiusPx;
-    //       if (val < 0.1) {
-    //         radiusPx = 3.0;
-    //       } else if (val < 0.3) {
-    //         radiusPx = 2.0;
-    //       } else {
-    //         radiusPx = 1.0;
-    //       }
+          // Radius selection based on luminance
+          float radiusPx;
+          if (val < 0.1) {
+            radiusPx = 3.0;
+          } else if (val < 0.3) {
+            radiusPx = 2.0;
+          } else {
+            radiusPx = 1.0;
+          }
 
-    //       float dots = dotMaskPx(fragPx, periodPx, radiusPx, angle);
+          float dots = dotMaskPx(fragPx, periodPx, radiusPx, angle);
 
-    //       // Dots in the black region, solid white elsewhere
-    //       float colorBW = mix(dots, 1.0, bw);
+          // Dots in the black region, solid white elsewhere
+          float colorBW = mix(dots, 1.0, bw);
 
-    //       ${outVar} = vec4(vec3(colorBW), ${outVar}.a);
+          ${outVar} = vec4(vec3(colorBW), ${outVar}.a);
 
-    //     }
-    //     `
-    //   );
+        }
+        `
+      );
 
-    //   mat.userData.shader = shader;
-    // };
+      mat.userData.shader = shader;
+    };
 
     mat.needsUpdate = true;
     return mat;
   }
 
-function makeNoiseShadowMaterial(noiseTexture) {
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    roughness: 1.0,
-    metalness: 0.0
-  });
+  function makeNoiseShadowMaterial() {
+    const noiseTexturePath = "./src/assets/noise3.png";
+    const noiseTexture = new THREE.TextureLoader().load(noiseTexturePath);
 
-  // Texture setup for mask usage
-  noiseTexture.wrapS = THREE.RepeatWrapping;
-  noiseTexture.wrapT = THREE.RepeatWrapping;
-  noiseTexture.minFilter = THREE.LinearMipmapLinearFilter;
-  noiseTexture.magFilter = THREE.LinearFilter;
-  noiseTexture.generateMipmaps = true;
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 1.0,
+      metalness: 0.0,
+    });
 
-  mat.onBeforeCompile = (shader) => {
-    const usesPCFragColor = shader.fragmentShader.includes('pc_fragColor');
-    const outVar = usesPCFragColor ? 'pc_fragColor' : 'gl_FragColor';
+    // Texture setup for mask usage
+    noiseTexture.wrapS = THREE.RepeatWrapping;
+    noiseTexture.wrapT = THREE.RepeatWrapping;
+    noiseTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    noiseTexture.magFilter = THREE.LinearFilter;
+    noiseTexture.generateMipmaps = true;
 
-    // Inject uniforms
-    shader.uniforms.uNoiseTex = { value: noiseTexture };
-    shader.uniforms.uNoiseScalePx = { value: 200.0 }; // pixels per noise tile
+    mat.onBeforeCompile = (shader) => {
+      const usesPCFragColor = shader.fragmentShader.includes("pc_fragColor");
+      const outVar = usesPCFragColor ? "pc_fragColor" : "gl_FragColor";
 
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <common>',
-      `
-      #include <common>
+      // ---- Uniforms ----
+      shader.uniforms.uNoiseTex = { value: noiseTexture };
 
-      uniform sampler2D uNoiseTex;
-      uniform float uNoiseScalePx;
+      // How many times the noise repeats across UV 0..1
+      // e.g. 8 => 8x8 tiles across the UV island
+      shader.uniforms.uNoiseTiling = { value: 4.0 };
 
-      // Screen-space noise lookup in pixel units
-      float noiseMaskPx(vec2 fragPx, float scalePx) {
-        // Convert pixel coordinates into repeating UVs
-        vec2 uv = fragPx / scalePx;
-        return texture2D(uNoiseTex, uv).r;
+      // ---- Ensure vUv exists in fragment shader ----
+      // MeshStandardMaterial usually already has UVs, but this makes it robust.
+      if (!shader.vertexShader.includes("varying vec2 vUv")) {
+        shader.vertexShader = shader.vertexShader
+          .replace(
+            "#include <common>",
+            `
+            #include <common>
+            varying vec2 vUv;
+            `
+          )
+          .replace(
+            "#include <uv_vertex>",
+            `
+            #include <uv_vertex>
+            vUv = uv;
+            `
+          );
       }
-      `
-    );
 
-    shader.fragmentShader = shader.fragmentShader.replace(
-      /}\s*$/,
-      `
-      vec3 currentRGB = ${outVar}.rgb;
+      if (!shader.fragmentShader.includes("varying vec2 vUv")) {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <common>",
+          `
+          #include <common>
+          varying vec2 vUv;
 
-      // Luminance
-      float val = dot(currentRGB, vec3(0.2126, 0.7152, 0.0722));
+          uniform sampler2D uNoiseTex;
+          uniform float uNoiseTiling;
 
-      vec2 fragPx = gl_FragCoord.xy;
-
-      // Noise sample (0..1)
-      float n = noiseMaskPx(fragPx, uNoiseScalePx);
-
-      // Luminance-driven noise contrast
-      float cutoff;
-      if (val < 0.3) {
-        cutoff = 0.7;
-      } else if (val < 0.6) {
-        cutoff = 0.6;
+          // UV-space noise lookup (sticks to mesh)
+          float noiseMaskUV(vec2 uv, float tiling) {
+            vec2 nuv = uv * tiling;
+            return texture2D(uNoiseTex, nuv).r;
+          }
+          `
+        );
       } else {
-        cutoff = 0.5;
+        // vUv exists, just inject uniforms + helper
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <common>",
+          `
+          #include <common>
+
+          uniform sampler2D uNoiseTex;
+          uniform float uNoiseTiling;
+
+          float noiseMaskUV(vec2 uv, float tiling) {
+            vec2 nuv = uv * tiling;
+            return texture2D(uNoiseTex, nuv).r;
+          }
+          `
+        );
       }
 
-      float aa = fwidth(n);
-      float noiseBW = smoothstep(cutoff - aa, cutoff + aa, n);
+      // ---- Append your mask logic at the end ----
+      shader.fragmentShader = shader.fragmentShader.replace(
+        /}\s*$/,
+        `
+          vec3 currentRGB = ${outVar}.rgb;
 
-      // Noise only in dark regions
-      float colorBW = noiseBW;
+          // Luminance
+          float val = dot(currentRGB, vec3(0.2126, 0.7152, 0.0722));
 
-      ${outVar} = vec4(vec3(colorBW), ${outVar}.a);
-      }
-      `
-    );
+          // Noise sample in UV space (0..1)
+          float n = noiseMaskUV(vUv, uNoiseTiling);
 
-    mat.userData.shader = shader;
-  };
+          // Luminance-driven noise contrast
+          float cutoff;
+          if (val < 0.3) {
+            cutoff = 0.7;
+          } else if (val < 0.6) {
+            cutoff = 0.6;
+          } else {
+            cutoff = 0.5;
+          }
 
-  mat.needsUpdate = true;
-  return mat;
-}
+          float aa = fwidth(n);
+          float noiseBW = smoothstep(cutoff - aa, cutoff + aa, n);
+
+          // Output BW mask (same as your original)
+          float colorBW = noiseBW;
+
+          ${outVar} = vec4(vec3(colorBW), ${outVar}.a);
+        }
+        `
+      );
+
+      mat.userData.shader = shader;
+    };
+
+    mat.needsUpdate = true;
+    return mat;
+  }
+
+
 
 
   let fbxRoot = null;
@@ -340,11 +385,14 @@ function makeNoiseShadowMaterial(noiseTexture) {
 
     fbxRoot.traverse((obj) => {
       if (obj.isSkinnedMesh) {
-        const m = makeDotShadowMaterial();
-        // const noiseTexturePath = './src/noise3.png';
-        // const noiseTexture = new THREE.TextureLoader().load(noiseTexturePath);
-        // const m = makeNoiseShadowMaterial(noiseTexture);
-        m.skinning = true;          // important for SkinnedMesh
+        // const m = new THREE.MeshStandardMaterial({
+        //   color: 0xffffff,
+        //   roughness: 1.0,
+        //   metalness: 0.0
+        // });
+        // const m = makeDotShadowMaterial();
+        const m = makeNoiseShadowMaterial();
+        m.skinning = true;
         obj.material = m;
         obj.castShadow = true;
         obj.receiveShadow = true;
@@ -352,10 +400,10 @@ function makeNoiseShadowMaterial(noiseTexture) {
     });
 
 
-    // if (fbx.animations?.length) {
-    //   mixer = new THREE.AnimationMixer(fbxRoot);
-    //   mixer.clipAction(fbx.animations[0]).play();
-    // }
+    if (fbx.animations?.length) {
+      mixer = new THREE.AnimationMixer(fbxRoot);
+      mixer.clipAction(fbx.animations[0]).play();
+    }
   });
 
 
