@@ -1,264 +1,62 @@
-import { useEffect, useRef } from "react";
+// ThreeApp.jsx
+import { useRef, useState } from "react";
 import * as THREE from "three";
-import { EffectComposer, RenderPass, EffectPass } from "postprocessing";
-import GUI from "lil-gui";
-import { setupSceneContent } from "./scene";
-import { KuwaharaEffect } from "./shaders/KuwaharaEffect";
+import { Canvas } from "@react-three/fiber";
 
+import SceneContent from "./SceneContent.jsx";
+import Annotation from "./Annotation.jsx";
+import Lights from "./Lights.jsx";
+import PostFX from "./PostFX.jsx";
 
 export default function ThreeApp() {
+  const dirLightRef = useRef();
+  const [shaderType, setShaderType] = useState("dot");
 
-  const mountRef = useRef(null);
+  return (
+    <div style={{ width: "100vw", height: "100vh" }}>
+      <Canvas
+        shadows
+        camera={{ fov: 60, near: 0.1, far: 100, position: [-2, 4, 6] }}
+        gl={{ antialias: true }}
+        onCreated={({ gl, camera }) => {
+          gl.setClearColor(0x000000, 1.0);
 
-  useEffect(() => {
-    const container = mountRef.current;
-    if (!container) return;
+          gl.shadowMap.enabled = true;
+          gl.shadowMap.type = THREE.PCFShadowMap;
 
-    // renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setClearColor(0x000000, 1.0);
-    container.appendChild(renderer.domElement);
+          camera.lookAt(-2, 3, 0);
+          camera.updateProjectionMatrix();
+        }}
+      >
+        <color attach="background" args={[0x101018]} />
 
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.BasicShadowMap;
+        <Lights dirLightRef={dirLightRef} />
 
-    // scene & camera
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x101018);
+        <SceneContent dirLightRef={dirLightRef} shaderType={shaderType}/>
 
-    const camera = new THREE.PerspectiveCamera(
-      60,
-      container.clientWidth / container.clientHeight,
-      0.1,
-      100
-    );
-    camera.position.set(-2, 4, 6);
-    const CAMERA_TARGET = new THREE.Vector3(-2, 3, 0);
-    camera.lookAt(CAMERA_TARGET);
-    scene.add(camera);
+        <Annotation position={[1.2, 4.8, -.2]} rotation={[0, -Math.PI / 4, 0]} clickFunction={() => setShaderType("dot")}>
+          <div style={{background:shaderType === "dot" ? "#F65959" : "#6A6A6A", width:'140px', height:'60px', display:'flex', alignItems:'end', justifyContent:'center', borderRadius:'8px'}}>
+            <img src="/img/dotted_shader.png" alt="Dot Shadow Shader" style={{width: shaderType === "dot" ? '70px' : '50px'}} />
+            <img src="/img/dotted_shader_text.png" alt="Dot Shadow Shader" style={{width:'80px', marginBottom:'10px'}} />
+          </div>
+        </Annotation>
 
-    const composer = new EffectComposer(renderer);
+        <Annotation position={[1.2, 3., -.1]} rotation={[0, -Math.PI / 4, 0]} clickFunction={() => setShaderType("dashedLine")}>
+          <div style={{background:shaderType === "dashedLine" ? "#F65959" : "#6A6A6A", width:'140px', height:'60px', display:'flex', alignItems:'end', justifyContent:'center', borderRadius:'8px'}}>
+            <img src="/img/dashed_line_shader.png" alt="Dot Shadow Shader" style={{width: shaderType === "dashedLine" ? '70px' : '50px'}} />
+            <img src="/img/dashed_line_shader_text.png" alt="Dot Shadow Shader" style={{width:'80px', marginBottom:'10px'}} />
+          </div>
+        </Annotation>
 
-    const renderPass = new RenderPass(scene, camera);
-    composer.addPass(renderPass);
+        <Annotation position={[1.2, 1.2, 0]} rotation={[0, -Math.PI / 4, 0]} clickFunction={() => setShaderType("waterColor")}>
+          <div style={{background:shaderType === "waterColor" ? "#F65959" : "#6A6A6A", width:'140px', height:'60px', display:'flex', alignItems:'end', justifyContent:'center', borderRadius:'8px'}}>
+            <img src="/img/water_color_shader.png" alt="Dot Shadow Shader" style={{width: shaderType === "waterColor" ? '70px' : '50px'}} />
+            <img src="/img/water_color_shader_text.png" alt="Dot Shadow Shader" style={{width:'80px', marginBottom:'10px'}} />
+          </div>
+        </Annotation>
 
-    const kuwaharaEffect = new KuwaharaEffect({ radius: 10 });
-    const kuwaharaPass = new EffectPass(camera, kuwaharaEffect);
-    composer.addPass(kuwaharaPass);
-
-    // Ensure *some* pass always renders to screen
-    function setKuwaharaEnabled(enabled) {
-      kuwaharaPass.enabled = enabled;
-
-      // The *last enabled* pass must render to screen
-      kuwaharaPass.renderToScreen = enabled;
-      renderPass.renderToScreen = !enabled;
-    }
-
-    // initial state
-    setKuwaharaEnabled(true);
-
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x202030, 0.5);
-    scene.add(hemiLight);
-
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    dirLight.position.set(-6.7, 4.82, 4.82);
-    dirLight.castShadow = true;
-
-    dirLight.shadow.mapSize.set(1024, 1024);
-    dirLight.shadow.camera.near = 0.5;
-    dirLight.shadow.camera.far = 20;
-    dirLight.shadow.camera.left = -6;
-    dirLight.shadow.camera.right = 6;
-    dirLight.shadow.camera.top = 6;
-    dirLight.shadow.camera.bottom = -6;
-
-    // IMPORTANT: add target to scene so direction controls work
-    scene.add(dirLight.target);
-    scene.add(dirLight);
-
-    // Helpers
-    const helperParams = {
-      showDirLightHelper: true,
-      showShadowFrustum: true,
-    };
-
-    const dirLightHelper = new THREE.DirectionalLightHelper(dirLight, 1.0);
-    scene.add(dirLightHelper);
-
-    const dirLightShadowHelper = new THREE.CameraHelper(dirLight.shadow.camera);
-    scene.add(dirLightShadowHelper);
-
-    dirLightHelper.visible = helperParams.showDirLightHelper;
-    dirLightShadowHelper.visible = helperParams.showShadowFrustum;
-
-    // GUI
-    const gui = new GUI({ title: "Lighting" });
-
-    // --- Post FX GUI params ---
-    const postParams = {
-      kuwaharaEnabled: true,
-      kuwaharaRadius: 10,
-    };
-    // --------------------------
-
-    const postFolder = gui.addFolder("Post FX");
-    postFolder
-      .add(postParams, "kuwaharaEnabled")
-      .name("Kuwahara")
-      .onChange((v) => setKuwaharaEnabled(v));
-
-    postFolder
-      .add(postParams, "kuwaharaRadius", 0, 30, 1)
-      .name("Radius")
-      .onChange((v) => {
-        // keep GUI state and effect state consistent
-        // depending on your KuwaharaEffect implementation, one of these will apply:
-        if (kuwaharaEffect.uniforms?.get?.("radius")) {
-          kuwaharaEffect.uniforms.get("radius").value = v;
-        } else if ("radius" in kuwaharaEffect) {
-          kuwaharaEffect.radius = v;
-        }
-      });
-
-    const dirParams = {
-      color: `#${dirLight.color.getHexString()}`,
-      intensity: dirLight.intensity,
-
-      posX: dirLight.position.x,
-      posY: dirLight.position.y,
-      posZ: dirLight.position.z,
-
-      targetX: dirLight.target.position.x,
-      targetY: dirLight.target.position.y,
-      targetZ: dirLight.target.position.z,
-    };
-
-    const dirFolder = gui.addFolder("Directional Light");
-
-    dirFolder
-      .addColor(dirParams, "color")
-      .name("Color")
-      .onChange((v) => dirLight.color.set(v));
-
-    dirFolder
-      .add(dirParams, "intensity", 0, 10, 0.01)
-      .name("Intensity")
-      .onChange((v) => (dirLight.intensity = v));
-
-    const posFolder = dirFolder.addFolder("Position");
-    posFolder.add(dirParams, "posX", -20, 20, 0.01).name("X").onChange((v) => (dirLight.position.x = v));
-    posFolder.add(dirParams, "posY", -20, 20, 0.01).name("Y").onChange((v) => (dirLight.position.y = v));
-    posFolder.add(dirParams, "posZ", -20, 20, 0.01).name("Z").onChange((v) => (dirLight.position.z = v));
-
-    const dirTargetFolder = dirFolder.addFolder("Direction (Target)");
-    dirTargetFolder.add(dirParams, "targetX", -20, 20, 0.01).name("Target X").onChange((v) => {
-      dirLight.target.position.x = v;
-      dirLight.target.updateMatrixWorld();
-    });
-    dirTargetFolder.add(dirParams, "targetY", -20, 20, 0.01).name("Target Y").onChange((v) => {
-      dirLight.target.position.y = v;
-      dirLight.target.updateMatrixWorld();
-    });
-    dirTargetFolder.add(dirParams, "targetZ", -20, 20, 0.01).name("Target Z").onChange((v) => {
-      dirLight.target.position.z = v;
-      dirLight.target.updateMatrixWorld();
-    });
-
-    const helpersFolder = dirFolder.addFolder("Helpers");
-    helpersFolder.add(helperParams, "showDirLightHelper").name("DirectionalLightHelper").onChange((v) => (dirLightHelper.visible = v));
-    helpersFolder.add(helperParams, "showShadowFrustum").name("Shadow Frustum").onChange((v) => (dirLightShadowHelper.visible = v));
-
-    const camParams = {
-      posX: camera.position.x,
-      posY: camera.position.y,
-      posZ: camera.position.z,
-      fov: camera.fov,
-    };
-
-    const camFolder = gui.addFolder("Camera");
-    const camPosFolder = camFolder.addFolder("Position");
-
-    camPosFolder.add(camParams, "posX", -50, 50, 0.01).name("X").onChange((v) => (camera.position.x = v));
-    camPosFolder.add(camParams, "posY", -50, 50, 0.01).name("Y").onChange((v) => (camera.position.y = v));
-    camPosFolder.add(camParams, "posZ", -50, 50, 0.01).name("Z").onChange((v) => (camera.position.z = v));
-
-    camFolder
-      .add(camParams, "fov", 20, 100, 0.1)
-      .name("FOV")
-      .onChange((v) => {
-        camera.fov = v;
-        camera.updateProjectionMatrix();
-      });
-
-    dirFolder.close();
-    posFolder.close();
-    dirTargetFolder.close();
-    camFolder.close();
-    camPosFolder.close();
-    helpersFolder.close();
-
-    // scene content
-    const sceneState = setupSceneContent({
-      scene,
-      camera,
-      renderer,
-      lights: { dirLight, hemiLight },
-    });
-
-    let lastTime = performance.now();
-    let rafId = 0;
-
-    function animate(now) {
-      const dt = (now - lastTime) / 1000.0;
-      lastTime = now;
-
-      if (sceneState && typeof sceneState.update === "function") {
-        sceneState.update(dt, now / 1000.0);
-      }
-
-      composer.render(dt);
-      rafId = requestAnimationFrame(animate);
-    }
-
-
-    rafId = requestAnimationFrame(animate);
-
-    // resize (use container size, not window)
-    const onResize = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-
-      renderer.setSize(width, height);
-      composer.setSize(width, height);
-    };
-
-
-    window.addEventListener("resize", onResize);
-
-    // cleanup (critical in React)
-    return () => {
-      window.removeEventListener("resize", onResize);
-      cancelAnimationFrame(rafId);
-
-      gui.destroy();
-
-      scene.remove(dirLightHelper);
-      scene.remove(dirLightShadowHelper);
-      dirLightHelper.dispose?.();
-      dirLightShadowHelper.dispose?.();
-
-      renderer.dispose();
-      if (renderer.domElement && renderer.domElement.parentNode) {
-        renderer.domElement.parentNode.removeChild(renderer.domElement);
-      }
-    };
-  }, []);
-
-  return <div ref={mountRef} style={{ width: "100vw", height: "100vh" }} />;
+        {shaderType === "waterColor" && <PostFX />}
+      </Canvas>
+    </div>
+  );
 }
