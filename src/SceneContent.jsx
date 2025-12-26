@@ -29,7 +29,7 @@ export default function SceneContent({ dirLightRef, shaderType }) {
       uShadowDarkness: { value: 0.75 },
 
       uFloorColor: { value: new THREE.Color(0x88b4ff) },
-      uShadowTint: { value: new THREE.Color(0xff1100) },
+      uShadowTint: { value: new THREE.Color(0x59DCF6) }
     }),
     []
   );

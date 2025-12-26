@@ -43,7 +43,7 @@ export const floorFragmentShader = /* glsl */ `
         // Sample raw shadow map
         vec4 shadowTexel = texture2D(uShadowMap, proj.xy);
 
-        float mask = step(0.9, shadowTexel.r);
+        float mask = step(0.99, shadowTexel.r);
 
         vec3 color = mix(uShadowTint, uFloorColor, mask);
 
