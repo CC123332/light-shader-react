@@ -23,13 +23,13 @@ export default function SceneContent({ dirLightRef, shaderType }) {
 
   const floorUniforms = useMemo(
     () => ({
-      uShadowMap: { value: null }, // set after first shadow render
+      uShadowMap: { value: null },
       uShadowMatrix: { value: new THREE.Matrix4() },
       uShadowBias: { value: 0.00005 },
       uShadowDarkness: { value: 0.75 },
 
       uFloorColor: { value: new THREE.Color(0x88b4ff) },
-      uShadowTint: { value: new THREE.Color(0xff0000) },
+      uShadowTint: { value: new THREE.Color(0xff1100) },
     }),
     []
   );
@@ -129,9 +129,9 @@ export default function SceneContent({ dirLightRef, shaderType }) {
       {/* Floor */}
       <mesh
         geometry={floorGeo}
-        material={floorMat}
         receiveShadow
         position={[20, 0, -12]}
+        material={floorMat}
       />
 
       {/* Character */}
