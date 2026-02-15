@@ -33,7 +33,7 @@ function CameraRig({ cameraSettings }) {
 
 export default function ThreeApp() {
   const dirLightRef = useRef();
-  const [shaderType, setShaderType] = useState("dot");
+  const [shaderType, setShaderType] = useState("AAA");
 
   // ------------------ DEFAULT SETTINGS ------------------
   const [lightSettings, setLightSettings] = useState(() => ({
@@ -112,7 +112,7 @@ export default function ThreeApp() {
 
         {/* Shader selector annotations (unchanged) */}
         <Annotation
-          position={[1.2, 4.8, -0.2]}
+          position={[1.2, 5.4, -0.2]}
           rotation={[0, -Math.PI / 4, 0]}
           clickFunction={() => setShaderType("dot")}
         >
@@ -142,7 +142,7 @@ export default function ThreeApp() {
         </Annotation>
 
         <Annotation
-          position={[1.2, 3.0, -0.1]}
+          position={[1.2, 3.8, -0.1]}
           rotation={[0, -Math.PI / 4, 0]}
           clickFunction={() => setShaderType("dashedLine")}
         >
@@ -172,7 +172,7 @@ export default function ThreeApp() {
         </Annotation>
 
         <Annotation
-          position={[1.2, 1.2, 0]}
+          position={[1.2, 2.2, 0]}
           rotation={[0, -Math.PI / 4, 0]}
           clickFunction={() => setShaderType("waterColor")}
         >
@@ -198,6 +198,36 @@ export default function ThreeApp() {
               alt="Water Color Shader"
               style={{ width: "80px", marginBottom: "10px" }}
             />
+          </div>
+        </Annotation>
+
+        <Annotation
+          position={[1.2, 0.6, 0]}
+          rotation={[0, -Math.PI / 4, 0]}
+          clickFunction={() => setShaderType("AAA")}
+        >
+          <div
+            style={{
+              background: shaderType === "AAA" ? "#F65959" : "#6A6A6A",
+              width: "140px",
+              height: "60px",
+              display: "flex",
+              alignItems: "end",
+              justifyContent: "center",
+              borderRadius: "8px",
+            }}
+          >
+            {/* <img
+              className={shaderType === "waterColor" ? "shadowed-img" : ""}
+              src="/img/water_color_shader.png"
+              alt="Water Color Shader"
+              style={{ width: shaderType === "waterColor" ? "70px" : "50px" }}
+            />
+            <img
+              src="/img/water_color_shader_text.png"
+              alt="Water Color Shader"
+              style={{ width: "80px", marginBottom: "10px" }}
+            /> */}
           </div>
         </Annotation>
 

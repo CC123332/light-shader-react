@@ -117,8 +117,6 @@ export function makeDashedLineShadowMaterial() {
   return mat;
 }
 
-
-
 export function makeDotShadowMaterial() {
     const mat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -226,7 +224,7 @@ export function makeNoiseShadowMaterial(
     mode = "new",                 // "new" | "original"
     originalMaterial = null       // pass mesh.material here if mode === "original"
   ) {
-    const noiseTexturePath = '/noise/noise3.png';
+    const noiseTexturePath = '/noise/noise4.png';
     const noiseTexture = new THREE.TextureLoader().load(noiseTexturePath);
 
     // Decide base material:
@@ -315,7 +313,7 @@ export function makeNoiseShadowMaterial(
         );
       }
 
-      // ---- Append your mask logic at the end ----
+      // ---- Append mask logic at the end ----
       shader.fragmentShader = shader.fragmentShader.replace(
         /}\s*$/,
         `
@@ -327,21 +325,8 @@ export function makeNoiseShadowMaterial(
           // Noise sample in UV space (0..1)
           float n = noiseMaskUV(vUv, uNoiseTiling);
 
-          // Luminance-driven noise contrast
-          float cutoff;
-          if (val < 0.3) {
-            cutoff = 0.7;
-          } else if (val < 0.6) {
-            cutoff = 0.6;
-          } else {
-            cutoff = 0.5;
-          }
-
-          float aa = fwidth(n);
-          float noiseBW = smoothstep(cutoff - aa, cutoff + aa, n);
-
-          // Output BW mask (same as your original)
-          float colorBW = noiseBW;
+          // Output BW mask
+          float colorBW = n * val + 0.2;
 
           ${outVar} = vec4(currentRGB * colorBW, ${outVar}.a);
         }
@@ -354,3 +339,164 @@ export function makeNoiseShadowMaterial(
     mat.needsUpdate = true;
     return mat;
 }
+
+export function makeHologramMaterial() {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 1.0,
+    metalness: 0.0,
+    transparent: true,
+    depthWrite: false,
+  });
+
+  mat.onBeforeCompile = (shader) => {
+    const usesPCFragColor = shader.fragmentShader.includes("pc_fragColor");
+    const outVar = usesPCFragColor ? "pc_fragColor" : "gl_FragColor";
+
+    // ----------------------------
+    // Vertex: pass skinned world pos
+    // ----------------------------
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <common>",
+      `
+      #include <common>
+      varying vec3 vWorldPos;
+      `
+    );
+
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <worldpos_vertex>",
+      `
+      #include <worldpos_vertex>
+      vWorldPos = worldPosition.xyz;
+      `
+    );
+
+    // ----------------------------
+    // Fragment: dot utilities
+    // ----------------------------
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <common>",
+      `
+      #include <common>
+      varying vec3 vWorldPos;
+
+      float hash12(vec2 p) {
+        vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.x + p3.y) * p3.z);
+      }
+
+      vec2 hash22(vec2 p) {
+        float n = hash12(p);
+        return vec2(n, hash12(p + n + 19.19));
+      }
+
+      // Centers in "p-space" (world-projected), but radius measured in PIXELS.
+      // p: 2D coordinate used for cell tiling/jitter (in arbitrary units)
+      // period: spacing between dot centers in p-units
+      // radiusPx: dot radius in SCREEN pixels (round and camera-facing)
+      float jitterDotMask_CentersInP_RoundInPixels(
+        vec2 p,
+        float period,
+        float radiusPx,
+        float seed
+      ) {
+        vec2 cellId = floor(p / period);
+        vec2 local  = (fract(p / period) - 0.5) * period;
+
+        vec2 rnd    = hash22(cellId + seed) - 0.5;
+        vec2 center = rnd * (period * 0.85);
+
+        // Delta in p-space from dot center
+        vec2 dpSpace = local - center;
+
+        // Convert dpSpace -> pixel delta via inverse Jacobian of p w.r.t. screen pixels
+        vec2 dpdx = dFdx(p);
+        vec2 dpdy = dFdy(p);
+
+        float det = dpdx.x * dpdy.y - dpdx.y * dpdy.x;
+
+        // Degenerate safeguard
+        if (abs(det) < 1e-10) return 0.0;
+
+        vec2 dPix;
+        dPix.x = ( dpSpace.x * dpdy.y - dpSpace.y * dpdy.x) / det;
+        dPix.y = (-dpSpace.x * dpdx.y + dpSpace.y * dpdx.x) / det;
+
+        float dPx = length(dPix);
+        float aa  = fwidth(dPx);
+
+        return 1.0 - smoothstep(radiusPx - aa, radiusPx + aa, dPx);
+      }
+
+
+      // Triplanar world projection for centers (prevents obvious planar projection artifacts).
+      // Uses view-space normal (vNormal) for weights; good enough for this purpose.
+      float dotMaskTriplanarWorld(vec3 worldPos, vec3 nView, float spacingWorld, float radiusPx, float seed)
+      {
+        // Convert world units -> "cell space": 1 unit per spacingWorld
+        float invSpacing = 1.0 / max(spacingWorld, 1e-6);
+
+        // p-space coords for each plane
+        vec2 pXY = worldPos.xy * invSpacing;
+        vec2 pXZ = worldPos.xz * invSpacing;
+        vec2 pYZ = worldPos.yz * invSpacing;
+
+        // Triplanar blend weights from normal (view space is fine here)
+        vec3 w = abs(normalize(nView));
+        w = max(w, vec3(1e-4));
+        w /= (w.x + w.y + w.z);
+
+        // period=1.0 means one dot cell per "spacingWorld"
+        float period = 2.0;
+
+        float mXY = jitterDotMask_CentersInP_RoundInPixels(pXY, period, radiusPx, seed + 11.0);
+        float mXZ = jitterDotMask_CentersInP_RoundInPixels(pXZ, period, radiusPx, seed + 23.0);
+        float mYZ = jitterDotMask_CentersInP_RoundInPixels(pYZ, period, radiusPx, seed + 37.0);
+
+        // Weight mapping:
+        // - XY is most appropriate when normal points along Z (w.z)
+        // - XZ when normal points along Y (w.y)
+        // - YZ when normal points along X (w.x)
+        return mYZ * w.x + mXZ * w.y + mXY * w.z;
+      }
+      `
+    );
+
+    // ----------------------------
+    // Final output
+    // ----------------------------
+    shader.fragmentShader = shader.fragmentShader.replace(
+      /}\s*$/,
+      `
+      vec3 currentRGB = ${outVar}.rgb;
+      float val = dot(currentRGB, vec3(0.2126, 0.7152, 0.0722));
+
+      // --- Controls ---
+      float seed = 13.37;
+
+      // Dot spacing in WORLD UNITS (meters in most rigs, but depends on your scale).
+      // Example: 0.03 = one cell every 3 cm.
+      float spacingWorld = 0.05;
+
+      // Dot radius in SCREEN PIXELS (always round)
+      float radiusPx = 2.0;
+
+      // vNormal exists in MeshStandardMaterial fragment; it is in view space.
+      // Using it is sufficient for triplanar weights.
+      float dotAlpha = dotMaskTriplanarWorld(vWorldPos, vNormal, spacingWorld, radiusPx, seed);
+
+      ${outVar}.rgb = vec3(.35, .86, .96);
+      ${outVar}.a   = dotAlpha * 10.;
+    }
+      `
+    );
+
+    mat.userData.shader = shader;
+  };
+
+  mat.needsUpdate = true;
+  return mat;
+}
+

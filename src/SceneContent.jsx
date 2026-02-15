@@ -10,6 +10,7 @@ import {
   makeDotShadowMaterial,
   makeDashedLineShadowMaterial,
   makeNoiseShadowMaterial,
+  makeHologramMaterial
 } from "./shaders/shadowMaterial.js";
 
 export default function SceneContent({ dirLightRef, shaderType }) {
@@ -84,6 +85,10 @@ export default function SceneContent({ dirLightRef, shaderType }) {
         }
         if (shaderType === "waterColor") {
           const m = makeNoiseShadowMaterial("new", obj.material);
+          obj.material = m;
+        }
+        if (shaderType === "AAA") {
+          const m = makeHologramMaterial();
           obj.material = m;
         }
         // Optional: dispose old material if it exists and is safe to dispose
